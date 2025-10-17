@@ -1,0 +1,90 @@
+# SOURCE CODE
+
+# ===================== Streamlit Part =====================
+import streamlit as st
+from inference_sdk import InferenceHTTPClient, InferenceConfiguration
+from PIL import Image
+from joblib import load
+
+loaded_model = load("final_model.h5")
+
+CLIENT = InferenceHTTPClient(
+    api_url="https://detect.roboflow.com",
+    api_key="Gqf1hrF7jdAh8EsbOoTM"
+)
+
+def perform_inference(image):
+    try:
+        custom_configuration = InferenceConfiguration(confidence_threshold=0.5)
+        with CLIENT.use_configuration(custom_configuration):
+            result = CLIENT.infer(image, model_id="kuchbhe/7")
+        class_names = {
+            "AKIEC": "Actinic Keratosis",
+            "BCC": "Basal Cell Carcinoma",
+            "BKL": "Pigmented Benign Keratosis",
+            "DF": "Dermatofibroma",
+            "MEL": "Melanoma",
+            "NV": "Nevus",
+            "VASC": "Vascular Lesion"
+        }
+        classes = [class_names.get(obj['class'], obj['class']) for obj in result['predictions']]
+        scores = [obj['confidence'] for obj in result['predictions']]
+        return classes, scores
+    except Exception as e:
+        return [], []
+
+def main():
+    st.title("Improved Skin Disease Classification Using GAN")
+    uploaded_image = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+    if uploaded_image is not None:
+        st.image(uploaded_image, caption="Uploaded Image", use_column_width=True)
+        if st.button("Perform Inference"):
+            with st.spinner("Performing inference..."):
+                image = Image.open(uploaded_image)
+                classes, scores = perform_inference(image)
+                if classes:
+                    st.write("Detected Classes and Probability Scores:")
+                    for cls, score in zip(classes, scores):
+                        st.write(f"- {cls}, Probability Score: {score:.2f}")
+                else:
+                    st.write("No classes detected.")
+
+if __name__ == "__main__":
+    main()
+
+# ===================== Flask Part =====================
+from flask import Flask, request, render_template
+import io
+
+app = Flask(__name__)
+
+def perform_inference_flask(image):
+    try:
+        custom_configuration = InferenceConfiguration(confidence_threshold=0.5)
+        with CLIENT.use_configuration(custom_configuration):
+            result = CLIENT.infer(image, model_id="kuchbhe/7")
+        class_names = {
+            "AKIEC": "Actinic Keratosis",
+            "BCC": "Basal Cell Carcinoma",
+            "BKL": "Pigmented Benign Keratosis",
+            "DF": "Dermatofibroma",
+            "MEL": "Melanoma",
+            "NV": "Nevus",
+            "VASC": "Vascular Lesion"
+        }
+        classes = [class_names.get(obj['class'], obj['class']) for obj in result['predictions']]
+        return classes
+    except Exception as e:
+        return str(e)
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        uploaded_image = request.files["file"]
+        image = Image.open(uploaded_image)
+        classes = perform_inference_flask(image)
+        return render_template("result.html", classes=classes)
+    return render_template("index.html")
+
+if __name__ == "__main__":
+    app.run(debug=True)
